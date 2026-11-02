@@ -90,7 +90,6 @@ export const ReportsView: React.FC<ReportsViewProps> = ({ userRole }) => {
   const [saleItems, setSaleItems] = useState<any[]>([]);
   const [variants, setVariants] = useState<ProductVariant[]>([]);
   const [expenses, setExpenses] = useState<any[]>([]);
-  const [paymentCollections, setPaymentCollections] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
   // Report mode & Date filter state
@@ -173,19 +172,17 @@ export const ReportsView: React.FC<ReportsViewProps> = ({ userRole }) => {
   const loadData = async (force = true) => {
     try {
       setLoading(true);
-      const [salesList, itemsList, variantList, expenseList, collectionsList] = await Promise.all([
+      const [salesList, itemsList, variantList, expenseList] = await Promise.all([
         dbService.getSales(force),
         dbService.getSaleItemsDetailed(force),
         dbService.getVariants(force),
-        dbService.getExpenses(force),
-        dbService.getPaymentCollections(force)
+        dbService.getExpenses(force)
       ]);
 
       setSales(salesList || []);
       setSaleItems(itemsList || []);
       setVariants(variantList || []);
       setExpenses(expenseList || []);
-      setPaymentCollections(collectionsList || []);
     } catch (e) {
       console.error(e);
     } finally {
@@ -276,31 +273,10 @@ export const ReportsView: React.FC<ReportsViewProps> = ({ userRole }) => {
   const totalNetSales = totalGrossSales - totalReturnsMerchandise;
   const totalDiscount = useMemo(() => filteredSales.reduce((acc, s) => acc + Number(s.discount_amount || 0), 0), [filteredSales]);
 
-  // Group payment collections by sale_id
-  const collectionsBySaleId = useMemo(() => {
-    const map = new Map<string, any[]>();
-    paymentCollections.forEach(pc => {
-      const arr = map.get(pc.sale_id) || [];
-      arr.push(pc);
-      map.set(pc.sale_id, arr);
-    });
-    return map;
-  }, [paymentCollections]);
-
-  // Payment collections matching the date filter period
-  const filteredCollections = useMemo(() => {
-    return paymentCollections.filter(pc => filterByDate(pc.collection_date));
-  }, [paymentCollections, filter, selectedMonth, startDate, endDate]);
-
-  const totalDueCollectedAll = useMemo(() => {
-    return filteredCollections
-      .filter(pc => pc.collection_type === 'DUE_COLLECTION')
-      .reduce((sum, pc) => sum + Number(pc.amount || 0), 0);
-  }, [filteredCollections]);
-
   let totalActualCashRefunded = 0;
   let totalPayable = 0;
-  let totalLegacyPaid = 0;
+  let totalPaid = 0;
+  let totalDue = 0;
 
   filteredSales.forEach(s => {
     const payable = Number(s.payable_amount || 0);
@@ -308,17 +284,13 @@ export const ReportsView: React.FC<ReportsViewProps> = ({ userRole }) => {
       totalActualCashRefunded += Math.abs(payable);
     } else {
       totalPayable += payable;
-      if (!collectionsBySaleId.has(s.id)) {
-        const paid = Number(s.received_amount !== undefined && s.received_amount !== null ? s.received_amount : (payable > 0 ? payable : 0));
-        totalLegacyPaid += paid;
-      }
+      const due = Number(s.due_amount || 0);
+      totalDue += due;
+      const paid = Number(s.received_amount !== undefined && s.received_amount !== null ? s.received_amount : Math.max(0, payable - due));
+      totalPaid += paid;
     }
   });
 
-  const totalCollectionsPaid = filteredCollections.reduce((sum, pc) => sum + Number(pc.amount || 0), 0);
-  const totalPaid = totalLegacyPaid + totalCollectionsPaid;
-
-  const totalDue = Math.max(0, totalPayable - totalPaid);
   const totalProfit = (totalPaid - totalActualCashRefunded) - totalCogs;
   const totalExpenses = useMemo(() => filteredExpenses.reduce((acc, exp) => acc + Number(exp.amount || 0), 0), [filteredExpenses]);
   const totalStockUnits = useMemo(() => variants.reduce((acc, v) => acc + (v.stock_quantity || 0), 0), [variants]);
@@ -417,26 +389,9 @@ export const ReportsView: React.FC<ReportsViewProps> = ({ userRole }) => {
         stat.refundAmount += Math.abs(payable);
       } else {
         stat.payable += payable;
-        if (!collectionsBySaleId.has(s.id)) {
-          const paid = Number(s.received_amount !== undefined && s.received_amount !== null ? s.received_amount : (payable > 0 ? payable : 0));
-          stat.paidAmount += paid;
-          stat.dueAmount += Math.max(0, payable - paid);
-        } else {
-          stat.dueAmount += Number(s.due_amount || 0);
-        }
-      }
-    });
-
-    // Attribute payment collections to the date they were received
-    paymentCollections.forEach(pc => {
-      if (!filterByDate(pc.collection_date)) return;
-      const key = getDateKey(pc.collection_date);
-      if (!key) return;
-      const stat = getOrCreateDateStat(key);
-      const amt = Number(pc.amount || 0);
-      stat.paidAmount += amt;
-      if (pc.collection_type === 'DUE_COLLECTION') {
-        stat.dueCollected += amt;
+        const paid = Number(s.received_amount !== undefined && s.received_amount !== null ? s.received_amount : (payable > 0 ? payable : 0));
+        stat.paidAmount += paid;
+        stat.dueAmount += Number(s.due_amount !== undefined && s.due_amount !== null ? s.due_amount : Math.max(0, payable - paid));
       }
     });
 
@@ -476,7 +431,7 @@ export const ReportsView: React.FC<ReportsViewProps> = ({ userRole }) => {
     });
 
     return Object.values(dateStatsMap).sort((a, b) => b.dateKey.localeCompare(a.dateKey));
-  }, [filteredSales, filteredItems, filteredExpenses, variantsMap, paymentCollections, collectionsBySaleId, filter, selectedMonth, startDate, endDate]);
+  }, [filteredSales, filteredItems, filteredExpenses, variantsMap, filter, selectedMonth, startDate, endDate]);
 
   // ----------------------------------------------------
   // 2. PRODUCT-WISE BREAKDOWN DATA
@@ -1368,11 +1323,6 @@ export const ReportsView: React.FC<ReportsViewProps> = ({ userRole }) => {
           </div>
           <div style={{ fontSize: '10.5px', marginTop: '3px', fontWeight: 600 }}>
             <span style={{ color: 'var(--color-success)' }}>Paid: ৳{formatAmount(totalPaid)}</span>
-            {totalDueCollectedAll > 0 && (
-              <span style={{ color: '#0284c7', marginLeft: '4px' }} title="Due collected during selected date period">
-                (incl. ৳{formatAmount(totalDueCollectedAll)} due)
-              </span>
-            )}
             {totalDue > 0 && <span style={{ color: 'var(--color-danger)', marginLeft: '6px' }}>· Due: ৳{formatAmount(totalDue)}</span>}
           </div>
         </div>

@@ -1,14 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import { dbService } from '../dbService';
 import { useNotificationStore } from '../store';
-import { Search, Eye, Edit2, Trash2, FileDown } from 'lucide-react';
+import { Search, Eye, Edit2, Trash2, FileDown, Coins, X, Loader2 } from 'lucide-react';
 import { Pagination } from './Pagination';
 import { InvoicePrintModal, type InvoiceData } from './InvoicePrintModal';
 import { EditSaleModal } from './EditSaleModal';
 import { exportTableToPdf } from '../utils/pdfExport';
 import { formatDateDDMMYYYY, formatTimeAMPM, formatAmount } from '../utils/dateUtils';
 import { isAdminRole } from '../roleUtils';
-import { Loader2 } from 'lucide-react';
 
 interface SalesListViewProps {
   isRestricted?: boolean;
@@ -34,6 +33,12 @@ export const SalesListView: React.FC<SalesListViewProps> = ({ isRestricted = fal
   const [editingSale, setEditingSale] = useState<any | null>(null);
   const [editingSaleItems, setEditingSaleItems] = useState<any[]>([]);
   const [editLoading, setEditLoading] = useState(false);
+
+  // Collect due modal state
+  const [dueCollectSale, setDueCollectSale] = useState<any | null>(null);
+  const [dueCollectAmount, setDueCollectAmount] = useState<number>(0);
+  const [dueCollectMethod, setDueCollectMethod] = useState<string>('Cash');
+  const [dueSubmitting, setDueSubmitting] = useState(false);
 
   const loadSales = async () => {
     try {
@@ -113,6 +118,41 @@ export const SalesListView: React.FC<SalesListViewProps> = ({ isRestricted = fal
         confirmButtonText: 'Permanently Delete'
       }
     );
+  };
+
+  const openCollectDueModal = (sale: any) => {
+    setDueCollectSale(sale);
+    setDueCollectAmount(Number(sale.due_amount || 0));
+    setDueCollectMethod('Cash');
+  };
+
+  const handleCollectDueSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!dueCollectSale) return;
+    const amount = Number(dueCollectAmount);
+    if (isNaN(amount) || amount <= 0) {
+      showToast('Please enter a valid collection amount greater than 0', 'warning');
+      return;
+    }
+    const maxDue = Number(dueCollectSale.due_amount || 0);
+    if (amount > maxDue) {
+      showToast(`Collection amount cannot exceed remaining due (৳${formatAmount(maxDue)})`, 'warning');
+      return;
+    }
+
+    try {
+      setDueSubmitting(true);
+      await dbService.collectDue(dueCollectSale.id, amount, dueCollectMethod);
+      const code = dueCollectSale.invoice_code || dueCollectSale.id.toUpperCase().substring(0, 8);
+      showToast(`Successfully collected ৳${formatAmount(amount)} for Invoice #${code}!`, 'success');
+      setDueCollectSale(null);
+      await loadSales();
+    } catch (err: any) {
+      console.error('Failed to collect due:', err);
+      showToast(err.message || 'Failed to collect due', 'error');
+    } finally {
+      setDueSubmitting(false);
+    }
   };
 
   // Filter sales
@@ -451,13 +491,60 @@ export const SalesListView: React.FC<SalesListViewProps> = ({ isRestricted = fal
                       ৳{formatAmount(s.payable_amount)}
                     </td>
                     <td style={{ textAlign: 'right', fontWeight: 'bold', fontSize: '12.5px', color: 'var(--color-success)' }}>
-                      ৳{formatAmount(s.payable_amount - s.due_amount)}
+                      ৳{formatAmount(s.received_amount !== undefined && s.received_amount !== null ? s.received_amount : (s.payable_amount - s.due_amount))}
                     </td>
                     <td style={{ textAlign: 'right', fontWeight: 'bold', fontSize: '12.5px', color: s.due_amount > 0 ? 'var(--color-danger)' : 'inherit' }}>
-                      {s.due_amount > 0 ? `৳${formatAmount(s.due_amount)}` : '৳0'}
+                      {Number(s.due_amount) > 0 ? (
+                        <div style={{ display: 'inline-flex', flexDirection: 'column', alignItems: 'flex-end', gap: '2px' }}>
+                          <span>৳{formatAmount(s.due_amount)}</span>
+                          <button
+                            type="button"
+                            className="btn btn-sm"
+                            onClick={() => openCollectDueModal(s)}
+                            style={{
+                              padding: '1px 6px',
+                              fontSize: '10px',
+                              height: '19px',
+                              backgroundColor: '#fee2e2',
+                              color: '#dc2626',
+                              border: '1px solid #fecaca',
+                              borderRadius: '4px',
+                              fontWeight: 700,
+                              cursor: 'pointer'
+                            }}
+                            title="Collect Due Payment"
+                          >
+                            Collect
+                          </button>
+                        </div>
+                      ) : (
+                        '৳0'
+                      )}
                     </td>
                     <td style={{ textAlign: 'center' }}>
                       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '5px' }}>
+                        {Number(s.due_amount) > 0 && (
+                          <button
+                            className="btn btn-sm"
+                            style={{
+                              padding: '0 6px',
+                              fontSize: '11.5px',
+                              height: '26px',
+                              backgroundColor: '#fef2f2',
+                              color: '#dc2626',
+                              border: '1px solid #fecaca',
+                              fontWeight: 700,
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '2px'
+                            }}
+                            onClick={() => openCollectDueModal(s)}
+                            title="Collect Due Payment"
+                          >
+                            <Coins size={12} /> Due
+                          </button>
+                        )}
+
                         <button
                           className="btn btn-secondary btn-sm"
                           style={{ padding: '0 6px', fontSize: '11.5px', height: '26px' }}
@@ -549,6 +636,153 @@ export const SalesListView: React.FC<SalesListViewProps> = ({ isRestricted = fal
             loadSales();
           }}
         />
+      )}
+
+      {/* COLLECT DUE MODAL */}
+      {dueCollectSale && (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          backgroundColor: 'rgba(0,0,0,0.5)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 1050,
+          padding: '16px'
+        }}>
+          <div className="card" style={{
+            width: '100%',
+            maxWidth: '440px',
+            backgroundColor: 'var(--bg-primary)',
+            boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04)',
+            borderRadius: '12px',
+            overflow: 'hidden',
+            border: '1px solid var(--border-color)'
+          }}>
+            <div style={{
+              padding: '16px 20px',
+              borderBottom: '1px solid var(--border-color)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              background: 'var(--bg-secondary)'
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <Coins size={18} style={{ color: 'var(--color-primary)' }} />
+                <h3 style={{ margin: 0, fontSize: '15px', fontWeight: 700 }}>Collect Due Payment</h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setDueCollectSale(null)}
+                style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: 'var(--text-muted)' }}
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <form onSubmit={handleCollectDueSubmit} style={{ padding: '20px' }}>
+              <div style={{
+                background: '#f8fafc',
+                border: '1px solid #e2e8f0',
+                borderRadius: '8px',
+                padding: '12px 14px',
+                marginBottom: '16px',
+                fontSize: '12.5px'
+              }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
+                  <span style={{ color: 'var(--text-muted)' }}>Invoice:</span>
+                  <span style={{ fontWeight: 700 }}>{dueCollectSale.invoice_code || dueCollectSale.id.toUpperCase().substring(0, 8)}</span>
+                </div>
+                {dueCollectSale.customer_name && (
+                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
+                    <span style={{ color: 'var(--text-muted)' }}>Customer:</span>
+                    <span style={{ fontWeight: 600 }}>{dueCollectSale.customer_name}</span>
+                  </div>
+                )}
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
+                  <span style={{ color: 'var(--text-muted)' }}>Total Payable:</span>
+                  <span style={{ fontWeight: 600 }}>৳{formatAmount(dueCollectSale.payable_amount)}</span>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
+                  <span style={{ color: 'var(--text-muted)' }}>Already Received:</span>
+                  <span style={{ fontWeight: 600, color: 'var(--color-success)' }}>
+                    ৳{formatAmount(dueCollectSale.received_amount !== undefined && dueCollectSale.received_amount !== null ? dueCollectSale.received_amount : (dueCollectSale.payable_amount - dueCollectSale.due_amount))}
+                  </span>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', paddingTop: '6px', borderTop: '1px dashed #cbd5e1' }}>
+                  <span style={{ fontWeight: 700, color: '#dc2626' }}>Remaining Due:</span>
+                  <span style={{ fontWeight: 800, color: '#dc2626', fontSize: '13.5px' }}>
+                    ৳{formatAmount(dueCollectSale.due_amount)}
+                  </span>
+                </div>
+              </div>
+
+              <div style={{ marginBottom: '14px' }}>
+                <label style={{ display: 'block', fontSize: '12px', fontWeight: 600, marginBottom: '6px' }}>
+                  Amount to Collect (৳) <span style={{ color: '#dc2626' }}>*</span>
+                </label>
+                <input
+                  type="number"
+                  step="any"
+                  min="1"
+                  max={Number(dueCollectSale.due_amount || 0)}
+                  className="form-control"
+                  style={{ width: '100%', height: '38px', fontSize: '14px', fontWeight: 700 }}
+                  value={dueCollectAmount || ''}
+                  onChange={(e) => setDueCollectAmount(parseFloat(e.target.value) || 0)}
+                  required
+                />
+              </div>
+
+              <div style={{ marginBottom: '20px' }}>
+                <label style={{ display: 'block', fontSize: '12px', fontWeight: 600, marginBottom: '6px' }}>
+                  Payment Method
+                </label>
+                <select
+                  className="form-control"
+                  style={{ width: '100%', height: '38px', fontSize: '13px' }}
+                  value={dueCollectMethod}
+                  onChange={(e) => setDueCollectMethod(e.target.value)}
+                >
+                  <option value="Cash">Cash</option>
+                  <option value="bKash">bKash</option>
+                  <option value="Nagad">Nagad</option>
+                  <option value="Card">Card / POS Terminal</option>
+                  <option value="Bank Transfer">Bank Transfer</option>
+                </select>
+              </div>
+
+              <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
+                <button
+                  type="button"
+                  className="btn btn-secondary"
+                  style={{ height: '36px', padding: '0 16px', fontSize: '13px' }}
+                  onClick={() => setDueCollectSale(null)}
+                  disabled={dueSubmitting}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="btn btn-primary"
+                  style={{ height: '36px', padding: '0 18px', fontSize: '13px', fontWeight: 700, display: 'inline-flex', alignItems: 'center', gap: '6px' }}
+                  disabled={dueSubmitting}
+                >
+                  {dueSubmitting ? (
+                    <>
+                      <Loader2 size={14} style={{ animation: 'spinLoader 0.7s linear infinite' }} /> Processing...
+                    </>
+                  ) : (
+                    'Confirm Collection'
+                  )}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
       )}
 
     </div>

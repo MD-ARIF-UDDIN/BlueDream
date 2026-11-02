@@ -12,7 +12,6 @@ interface CacheStore {
   users?: { data: any[]; timestamp: number };
   stock_ledger?: { data: any[]; timestamp: number };
   sale_items_detailed?: { data: any[]; timestamp: number };
-  payment_collections?: { data: any[]; timestamp: number };
 }
 
 const CACHE_TTL_MS = 60 * 1000; // 1 minute fresh cache
@@ -495,22 +494,7 @@ export const dbService = {
         }
       }
       
-      if (receivedAmount > 0) {
-        try {
-          await this.recordPaymentCollection({
-            sale_id: sale.id,
-            amount: receivedAmount,
-            payment_method: paymentMethod,
-            collection_type: 'INITIAL',
-            collection_date: sale.sale_date || new Date().toISOString(),
-            notes: 'Initial sale payment'
-          });
-        } catch (e) {
-          console.warn('Failed to record initial payment collection:', e);
-        }
-      }
-
-      clearPosCache(['sales', 'variants', 'sale_items_detailed', 'stock_ledger', 'payment_collections' as any]);
+      clearPosCache(['sales', 'variants', 'sale_items_detailed', 'stock_ledger']);
       return { id: sale.id, invoice_code: sale.invoice_code || invoiceCode };
     }
     throw new Error('Failed to checkout sale');
@@ -967,104 +951,37 @@ export const dbService = {
     return result;
   },
 
-  async recordPaymentCollection(item: {
-    sale_id: string;
-    amount: number;
-    payment_method: string;
-    collection_type?: 'INITIAL' | 'DUE_COLLECTION';
-    collection_date?: string;
-    notes?: string;
-  }) {
-    const id = (typeof crypto !== 'undefined' && crypto.randomUUID) 
-      ? crypto.randomUUID() 
-      : `pc_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
+  async collectDue(saleId: string, amountCollected: number, paymentMethod?: string) {
+    const { data: sale, error: fetchErr } = await supabase
+      .from('sales')
+      .select('payable_amount, received_amount, due_amount')
+      .eq('id', saleId)
+      .single();
 
-    const fullItem = {
-      id,
-      ...item,
-      collection_type: item.collection_type || 'DUE_COLLECTION',
-      collection_date: item.collection_date || new Date().toISOString(),
-      created_at: new Date().toISOString()
+    if (fetchErr) throw fetchErr;
+
+    const currentReceived = Number(sale?.received_amount || 0);
+    const payable = Number(sale?.payable_amount || 0);
+    const newReceived = currentReceived + amountCollected;
+    const newDue = Math.max(0, payable - newReceived);
+
+    const updatePayload: any = {
+      received_amount: newReceived,
+      due_amount: newDue,
     };
-
-    // 1. Try inserting to Supabase table
-    try {
-      const { data, error } = await supabase
-        .from('payment_collections')
-        .insert({
-          sale_id: fullItem.sale_id,
-          amount: fullItem.amount,
-          payment_method: fullItem.payment_method,
-          collection_type: fullItem.collection_type,
-          collection_date: fullItem.collection_date,
-          notes: fullItem.notes || null
-        })
-        .select()
-        .single();
-      if (!error && data) {
-        fullItem.id = data.id;
-      }
-    } catch (e) {
-      console.warn('payment_collections Supabase insert skipped (falling back to local cache):', e);
+    if (paymentMethod) {
+      updatePayload.payment_method = paymentMethod;
     }
 
-    // 2. Always persist in local storage
-    try {
-      const local = JSON.parse(localStorage.getItem('zenpos_payment_collections') || '[]');
-      local.push(fullItem);
-      localStorage.setItem('zenpos_payment_collections', JSON.stringify(local));
-    } catch (e) {
-      console.warn('Failed to update local payment_collections:', e);
-    }
+    const { error: updateErr } = await supabase
+      .from('sales')
+      .update(updatePayload)
+      .eq('id', saleId);
 
-    clearPosCache(['sales', 'payment_collections' as any]);
-    return fullItem;
-  },
+    if (updateErr) throw updateErr;
 
-  async getPaymentCollections(forceRefresh = false) {
-    const now = Date.now();
-    if (!forceRefresh && (cache as any).payment_collections && (now - (cache as any).payment_collections.timestamp < CACHE_TTL_MS)) {
-      return (cache as any).payment_collections.data;
-    }
-
-    let remoteList: any[] = [];
-    try {
-      const { data, error } = await supabase
-        .from('payment_collections')
-        .select('*')
-        .order('collection_date', { ascending: false });
-      if (!error && data) {
-        remoteList = data;
-      }
-    } catch {
-      // Table might not exist yet
-    }
-
-    let localList: any[] = [];
-    try {
-      localList = JSON.parse(localStorage.getItem('zenpos_payment_collections') || '[]');
-    } catch {
-      localList = [];
-    }
-
-    const map = new Map<string, any>();
-    remoteList.forEach(it => {
-      const k = it.id || `${it.sale_id}_${it.collection_date}_${it.amount}`;
-      map.set(k, it);
-    });
-    localList.forEach(it => {
-      const k = it.id || `${it.sale_id}_${it.collection_date}_${it.amount}`;
-      if (!map.has(k)) {
-        map.set(k, it);
-      }
-    });
-
-    const result = Array.from(map.values()).sort((a, b) =>
-      new Date(b.collection_date).getTime() - new Date(a.collection_date).getTime()
-    );
-
-    (cache as any).payment_collections = { data: result, timestamp: now };
-    return result;
+    clearPosCache(['sales']);
+    return { success: true, due_amount: newDue, received_amount: newReceived };
   },
 
   async getStockLedger(forceRefresh = false) {

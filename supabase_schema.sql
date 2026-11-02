@@ -152,19 +152,8 @@ CREATE TABLE IF NOT EXISTS public.expenses (
     created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
 );
 
--- 11. Create Payment Collections Table (tracks due collections & payment history)
-CREATE TABLE IF NOT EXISTS public.payment_collections (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    sale_id UUID REFERENCES public.sales(id) ON DELETE CASCADE,
-    amount DECIMAL(10,2) NOT NULL DEFAULT 0.00,
-    payment_method VARCHAR(50) NOT NULL DEFAULT 'CASH',
-    collection_type VARCHAR(50) NOT NULL DEFAULT 'DUE_COLLECTION',
-    collection_date TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL,
-    notes TEXT,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
-);
-
-CREATE INDEX IF NOT EXISTS idx_payment_collections_sale ON public.payment_collections(sale_id);
+-- Drop legacy payment_collections if present (all collections/dues are maintained directly in sales table)
+DROP TABLE IF EXISTS public.payment_collections CASCADE;
 
 -- =========================================================================
 -- 12. Enable Row Level Security (RLS) & Policies
@@ -179,7 +168,6 @@ ALTER TABLE public.sales ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.sale_items ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.stock_ledger ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.expenses ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.payment_collections ENABLE ROW LEVEL SECURITY;
 
 -- Clean existing policies so this script can be re-run without duplicate policy errors
 DROP POLICY IF EXISTS "Allow all for users" ON public.users;
@@ -192,7 +180,6 @@ DROP POLICY IF EXISTS "Allow all for sales" ON public.sales;
 DROP POLICY IF EXISTS "Allow all for sale_items" ON public.sale_items;
 DROP POLICY IF EXISTS "Allow all for stock_ledger" ON public.stock_ledger;
 DROP POLICY IF EXISTS "Allow all for expenses" ON public.expenses;
-DROP POLICY IF EXISTS "Allow all for payment_collections" ON public.payment_collections;
 DROP POLICY IF EXISTS "Allow read for all authenticated/anon" ON public.users;
 DROP POLICY IF EXISTS "Allow read for all authenticated/anon" ON public.products;
 DROP POLICY IF EXISTS "Allow read for all authenticated/anon" ON public.product_variants;
@@ -203,7 +190,6 @@ DROP POLICY IF EXISTS "Allow read for all authenticated/anon" ON public.sales;
 DROP POLICY IF EXISTS "Allow read for all authenticated/anon" ON public.sale_items;
 DROP POLICY IF EXISTS "Allow read for all authenticated/anon" ON public.stock_ledger;
 DROP POLICY IF EXISTS "Allow read for all authenticated/anon" ON public.expenses;
-DROP POLICY IF EXISTS "Allow read/write for all on payment_collections" ON public.payment_collections;
 
 -- Create open RLS policies (allow full access for client app with anon / auth keys)
 CREATE POLICY "Allow all for users" ON public.users FOR ALL USING (true) WITH CHECK (true);
@@ -216,7 +202,6 @@ CREATE POLICY "Allow all for sales" ON public.sales FOR ALL USING (true) WITH CH
 CREATE POLICY "Allow all for sale_items" ON public.sale_items FOR ALL USING (true) WITH CHECK (true);
 CREATE POLICY "Allow all for stock_ledger" ON public.stock_ledger FOR ALL USING (true) WITH CHECK (true);
 CREATE POLICY "Allow all for expenses" ON public.expenses FOR ALL USING (true) WITH CHECK (true);
-CREATE POLICY "Allow all for payment_collections" ON public.payment_collections FOR ALL USING (true) WITH CHECK (true);
 
 -- =========================================================================
 -- 13. Automatic Triggers & Functions
