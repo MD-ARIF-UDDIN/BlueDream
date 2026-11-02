@@ -204,7 +204,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ lowStockCount: _lowStockCount,
         )}
       </ul>
       <div style={{ marginTop: 'auto', padding: '10px 12px', borderTop: '1px solid var(--border-color)', fontSize: '10.5px', color: 'var(--text-muted)', lineHeight: '1.4' }}>
-        <div style={{ fontWeight: 700, color: 'var(--text-primary)' }}>ZenPOS V1</div>
+        <div style={{ fontWeight: 700, color: 'var(--text-primary)' }}>Blue Dream POS</div>
         <div style={{ marginTop: '2px', fontSize: '10px' }}>
           By: <span style={{ fontWeight: 600, color: 'var(--text-secondary)' }}>MD Arif Uddin</span>
           <br />

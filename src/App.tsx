@@ -183,7 +183,7 @@ function App() {
           width: '36px',
           height: '36px',
           border: '3px solid #e2e8f0',
-          borderTopColor: '#0b2545',
+          borderTopColor: '#1d4ed8',
           borderRadius: '50%',
           animation: 'spinLoader 0.7s linear infinite'
         }} />

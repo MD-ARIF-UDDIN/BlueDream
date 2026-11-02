@@ -19,7 +19,7 @@ export interface ModuleDefinition {
 }
 
 export const ALL_APP_MODULES: ModuleDefinition[] = [
-  { id: 'pos', name: 'POS Checkout', label: 'POS Checkout', shortName: 'POS', color: '#0b2545' },
+  { id: 'pos', name: 'POS Checkout', label: 'POS Checkout', shortName: 'POS', color: '#1d4ed8' },
   { id: 'returns', name: 'Returns & Exchanges', label: 'Returns & Exchanges', shortName: 'Returns', color: '#dc2626' },
   { id: 'products', name: 'Product Catalog', label: 'Products & Variants', shortName: 'Products', color: '#0284c7' },
   { id: 'stock', name: 'Stock & Inventory', label: 'Stock & Inventory', shortName: 'Stock', color: '#d97706' },
