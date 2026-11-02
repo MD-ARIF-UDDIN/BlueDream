@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { dbService } from '../dbService';
 import type { ProductVariant } from '../store';
-import { Calendar, FileDown, Search, Eye } from 'lucide-react';
+import { Calendar, FileDown, Search, Eye, RefreshCw } from 'lucide-react';
 import { Pagination } from './Pagination';
 import { InvoicePrintModal, type InvoiceData } from './InvoicePrintModal';
 import { exportTableToPdf } from '../utils/pdfExport';
@@ -94,7 +94,7 @@ export const ReportsView: React.FC<ReportsViewProps> = ({ userRole }) => {
 
   // Report mode & Date filter state
   const [reportType, setReportType] = useState<ReportType>('BY_DATE');
-  const [filter, setFilter] = useState<DateFilter>('today');
+  const [filter, setFilter] = useState<DateFilter>('month');
   const [selectedMonth, setSelectedMonth] = useState<string>(() => {
     const now = new Date();
     const y = now.getFullYear();
@@ -179,8 +179,13 @@ export const ReportsView: React.FC<ReportsViewProps> = ({ userRole }) => {
         dbService.getExpenses(force)
       ]);
 
-      setSales(salesList || []);
-      setSaleItems(itemsList || []);
+      const salesData = salesList || [];
+      const itemsData = (itemsList && itemsList.length > 0)
+        ? itemsList
+        : salesData.flatMap((s: any) => (s.sale_items || []).map((it: any) => ({ ...it, sale: s })));
+
+      setSales(salesData);
+      setSaleItems(itemsData);
       setVariants(variantList || []);
       setExpenses(expenseList || []);
     } catch (e) {
@@ -237,9 +242,21 @@ export const ReportsView: React.FC<ReportsViewProps> = ({ userRole }) => {
     }
   };
 
+  // Fast sales lookup map to ensure every sale item has its parent sale data
+  const salesMap = useMemo(() => new Map(sales.map(s => [s.id, s])), [sales]);
+
+  const enrichedSaleItems = useMemo(() => {
+    return saleItems.map(si => {
+      if ((!si.sale || !si.sale.sale_date) && si.sale_id && salesMap.has(si.sale_id)) {
+        return { ...si, sale: salesMap.get(si.sale_id) };
+      }
+      return si;
+    });
+  }, [saleItems, salesMap]);
+
   // Filtered datasets based on date filter
   const filteredSales = useMemo(() => sales.filter(s => filterByDate(s.sale_date)), [sales, filter, selectedMonth, startDate, endDate]);
-  const filteredItems = useMemo(() => saleItems.filter(si => si.sale && filterByDate(si.sale.sale_date)), [saleItems, filter, selectedMonth, startDate, endDate]);
+  const filteredItems = useMemo(() => enrichedSaleItems.filter(si => si.sale && filterByDate(si.sale.sale_date)), [enrichedSaleItems, filter, selectedMonth, startDate, endDate]);
   const filteredExpenses = useMemo(() => expenses.filter(exp => filterByDate(exp.expense_date)), [expenses, filter, selectedMonth, startDate, endDate]);
 
   // Fast variant lookup map
@@ -269,6 +286,10 @@ export const ReportsView: React.FC<ReportsViewProps> = ({ userRole }) => {
       totalCogs += qty * unitCost;
     }
   });
+
+  if (totalGrossSales === 0 && filteredSales.length > 0) {
+    totalGrossSales = filteredSales.reduce((acc, s) => acc + Number(s.total_amount || s.payable_amount || 0), 0);
+  }
 
   const totalNetSales = totalGrossSales - totalReturnsMerchandise;
   const totalDiscount = useMemo(() => filteredSales.reduce((acc, s) => acc + Number(s.discount_amount || 0), 0), [filteredSales]);
@@ -425,6 +446,9 @@ export const ReportsView: React.FC<ReportsViewProps> = ({ userRole }) => {
     });
 
     Object.values(dateStatsMap).forEach(stat => {
+      if (stat.grossSales === 0 && stat.payable > 0) {
+        stat.grossSales = stat.payable + stat.discount;
+      }
       stat.netSales = stat.grossSales - stat.returnsAmount;
       stat.productProfit = (stat.paidAmount - stat.refundAmount) - stat.totalCogs;
       stat.netProfit = stat.productProfit - stat.expenses;
@@ -1122,6 +1146,15 @@ export const ReportsView: React.FC<ReportsViewProps> = ({ userRole }) => {
               <span>Download PDF</span>
             </button>
           )}
+          <button
+            onClick={() => loadData(true)}
+            className="btn btn-secondary btn-sm"
+            style={{ padding: '0 10px', height: '28px', fontSize: '11.5px', gap: '5px', fontWeight: 700 }}
+            title="Refresh Report Data"
+          >
+            <RefreshCw size={13} />
+            <span>Refresh</span>
+          </button>
         </div>
 
         <div className="reports-tabs-wrapper">

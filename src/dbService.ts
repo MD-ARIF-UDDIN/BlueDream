@@ -1033,7 +1033,7 @@ export const dbService = {
     }
     const { data, error } = await supabase
       .from('sale_items')
-      .select('id, sale_id, variant_id, quantity, unit_price, total_price, sale_type, return_date, is_returned, sale:sales(id, sale_date, invoice_code)');
+      .select('*, sale:sales(*)');
     if (error) throw error;
     const result = data || [];
     setCached('sale_items_detailed', result);
