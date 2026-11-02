@@ -48,8 +48,8 @@ export const InventoryReportView: React.FC<InventoryReportViewProps> = ({ userRo
       try {
         setLoading(true);
         const [varList, itemsList] = await Promise.all([
-          dbService.getVariants(true),
-          dbService.getSaleItemsDetailed(true)
+          dbService.getVariants(false),
+          dbService.getSaleItemsDetailed(false)
         ]);
         setVariants(varList || []);
         setSaleItems(itemsList || []);

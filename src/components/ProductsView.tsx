@@ -143,10 +143,10 @@ export const ProductsView: React.FC<ProductsViewProps> = ({ onRefreshStats, user
   const [formDescription, setFormDescription] = useState('');
   const [savingProduct, setSavingProduct] = useState(false);
 
-  const loadData = async () => {
+  const loadData = async (force = false) => {
     try {
       setLoading(true);
-      const varList = await dbService.getVariants(true);
+      const varList = await dbService.getVariants(force);
       setVariants(varList);
     } catch (err: any) {
       console.error('Failed to load products:', err);

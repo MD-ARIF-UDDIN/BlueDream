@@ -38,10 +38,10 @@ export const UsersView: React.FC<UsersViewProps> = ({ userRole }) => {
   const [editIsLocked, setEditIsLocked] = useState(false);
   const [editLoading, setEditLoading] = useState(false);
 
-  const loadUsers = async () => {
+  const loadUsers = async (force = false) => {
     try {
       setLoading(true);
-      const list = await dbService.getUsers(true);
+      const list = await dbService.getUsers(force);
       setUsers(list);
     } catch (e) {
       console.error(e);

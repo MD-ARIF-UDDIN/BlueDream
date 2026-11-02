@@ -1,7 +1,7 @@
 import { supabase } from './supabaseClient';
 import type { Product, ProductVariant } from './store';
 
-// High-speed In-Memory Cache with TTL
+// High-speed In-Memory + SessionStorage Persistent Cache
 interface CacheStore {
   products?: { data: Product[]; timestamp: number };
   variants?: { data: ProductVariant[]; timestamp: number };
@@ -14,14 +14,62 @@ interface CacheStore {
   sale_items_detailed?: { data: any[]; timestamp: number };
 }
 
-const CACHE_TTL_MS = 60 * 1000; // 1 minute fresh cache
+const STORAGE_PREFIX = 'bd_cache_';
+const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes fresh cache
 const cache: CacheStore = {};
+
+function getCached<T>(key: keyof CacheStore): { data: T; timestamp: number } | null {
+  if (cache[key]) {
+    return cache[key] as { data: T; timestamp: number };
+  }
+  try {
+    const raw = sessionStorage.getItem(`${STORAGE_PREFIX}${key}`);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (parsed && parsed.data && parsed.timestamp) {
+        (cache as any)[key] = parsed;
+        return parsed;
+      }
+    }
+  } catch {
+    // Ignore storage parse error
+  }
+  return null;
+}
+
+function setCached<T>(key: keyof CacheStore, data: T): void {
+  const now = Date.now();
+  const entry = { data, timestamp: now };
+  (cache as any)[key] = entry;
+  try {
+    sessionStorage.setItem(`${STORAGE_PREFIX}${key}`, JSON.stringify(entry));
+  } catch {
+    try {
+      for (let i = sessionStorage.length - 1; i >= 0; i--) {
+        const k = sessionStorage.key(i);
+        if (k && k.startsWith(STORAGE_PREFIX)) sessionStorage.removeItem(k);
+      }
+      sessionStorage.setItem(`${STORAGE_PREFIX}${key}`, JSON.stringify(entry));
+    } catch {}
+  }
+}
 
 export const clearPosCache = (keys?: (keyof CacheStore)[]) => {
   if (!keys) {
     Object.keys(cache).forEach((k) => delete cache[k as keyof CacheStore]);
+    try {
+      for (let i = sessionStorage.length - 1; i >= 0; i--) {
+        const k = sessionStorage.key(i);
+        if (k && k.startsWith(STORAGE_PREFIX)) sessionStorage.removeItem(k);
+      }
+    } catch {}
   } else {
-    keys.forEach((k) => delete cache[k]);
+    keys.forEach((k) => {
+      delete cache[k];
+      try {
+        sessionStorage.removeItem(`${STORAGE_PREFIX}${k}`);
+      } catch {}
+    });
   }
 };
 
@@ -32,8 +80,9 @@ export const dbService = {
   // --- Products & Variants ---
   async getProducts(forceRefresh = false): Promise<Product[]> {
     const now = Date.now();
-    if (!forceRefresh && cache.products && (now - cache.products.timestamp < CACHE_TTL_MS)) {
-      return cache.products.data;
+    const cached = getCached<Product[]>('products');
+    if (!forceRefresh && cached && (now - cached.timestamp < CACHE_TTL_MS)) {
+      return cached.data;
     }
     const { data, error } = await supabase
       .from('products')
@@ -41,7 +90,7 @@ export const dbService = {
       .order('created_at', { ascending: false });
     if (error) throw error;
     const result = data || [];
-    cache.products = { data: result, timestamp: now };
+    setCached('products', result);
     return result;
   },
 
@@ -78,8 +127,9 @@ export const dbService = {
 
   async getVariants(forceRefresh = false): Promise<ProductVariant[]> {
     const now = Date.now();
-    if (!forceRefresh && cache.variants && (now - cache.variants.timestamp < CACHE_TTL_MS)) {
-      return cache.variants.data;
+    const cached = getCached<ProductVariant[]>('variants');
+    if (!forceRefresh && cached && (now - cached.timestamp < CACHE_TTL_MS)) {
+      return cached.data;
     }
     const { data, error } = await supabase
       .from('product_variants')
@@ -90,7 +140,7 @@ export const dbService = {
       ...v,
       barcode: (v.barcode || '').trim().replace(/[^0-9a-zA-Z]/g, '')
     }));
-    cache.variants = { data: result, timestamp: now };
+    setCached('variants', result);
     return result;
   },
 
@@ -172,8 +222,9 @@ export const dbService = {
   // --- Suppliers ---
   async getSuppliers(forceRefresh = false) {
     const now = Date.now();
-    if (!forceRefresh && cache.suppliers && (now - cache.suppliers.timestamp < CACHE_TTL_MS)) {
-      return cache.suppliers.data;
+    const cached = getCached<any[]>('suppliers');
+    if (!forceRefresh && cached && (now - cached.timestamp < CACHE_TTL_MS)) {
+      return cached.data;
     }
     const { data, error } = await supabase
       .from('suppliers')
@@ -181,7 +232,7 @@ export const dbService = {
       .order('name', { ascending: true });
     if (error) throw error;
     const result = data || [];
-    cache.suppliers = { data: result, timestamp: now };
+    setCached('suppliers', result);
     return result;
   },
 
@@ -199,8 +250,9 @@ export const dbService = {
   // --- Purchases ---
   async getPurchases(forceRefresh = false) {
     const now = Date.now();
-    if (!forceRefresh && cache.purchases && (now - cache.purchases.timestamp < CACHE_TTL_MS)) {
-      return cache.purchases.data;
+    const cached = getCached<any[]>('purchases');
+    if (!forceRefresh && cached && (now - cached.timestamp < CACHE_TTL_MS)) {
+      return cached.data;
     }
     const { data, error } = await supabase
       .from('purchases')
@@ -208,7 +260,7 @@ export const dbService = {
       .order('purchase_date', { ascending: false });
     if (error) throw error;
     const result = data || [];
-    cache.purchases = { data: result, timestamp: now };
+    setCached('purchases', result);
     return result;
   },
 
@@ -285,12 +337,16 @@ export const dbService = {
   // --- Sales ---
   async getSales(forceRefresh = false, limit?: number) {
     const now = Date.now();
-    if (!forceRefresh && cache.sales && (now - cache.sales.timestamp < CACHE_TTL_MS)) {
-      return limit ? cache.sales.data.slice(0, limit) : cache.sales.data;
+    const cached = getCached<any[]>('sales');
+    if (!forceRefresh && cached && !limit && (now - cached.timestamp < CACHE_TTL_MS)) {
+      return cached.data;
+    }
+    if (!forceRefresh && cached && limit && (now - cached.timestamp < CACHE_TTL_MS)) {
+      return cached.data.slice(0, limit);
     }
     let query = supabase
       .from('sales')
-      .select('*, sale_items(id, variant_id, quantity, unit_price, total_price, sale_type, return_date, is_returned, variant:product_variants(id, barcode, sku, size, color, product:products(name)))')
+      .select('id, invoice_code, sale_date, total_amount, discount_amount, payable_amount, received_amount, due_amount, change_amount, payment_method, customer_name, customer_phone, guarantor_name, guarantor_phone, notes, sale_items(id, variant_id, quantity, unit_price, total_price, sale_type, return_date, is_returned, variant:product_variants(id, barcode, sku, size, color, product:products(name)))')
       .order('sale_date', { ascending: false });
 
     if (limit) {
@@ -303,7 +359,7 @@ export const dbService = {
     const { data, error } = await query;
     if (error) throw error;
     const result = data || [];
-    cache.sales = { data: result, timestamp: now };
+    setCached('sales', result);
     return result;
   },
 
@@ -636,8 +692,22 @@ export const dbService = {
 
   // --- Ultra-Fast Low Stock Count for Badge (Does not pull all sales/items) ---
   async getLowStockCount(): Promise<number> {
-    const variants = await this.getVariants();
-    return variants.filter(v => v.stock_quantity <= (v.min_stock_level ?? 5)).length;
+    if (cache.variants?.data) {
+      return cache.variants.data.filter(v => v.stock_quantity <= (v.min_stock_level ?? 5)).length;
+    }
+    const cached = getCached<ProductVariant[]>('variants');
+    if (cached?.data) {
+      return cached.data.filter(v => v.stock_quantity <= (v.min_stock_level ?? 5)).length;
+    }
+    try {
+      const { data, error } = await supabase
+        .from('product_variants')
+        .select('stock_quantity, min_stock_level');
+      if (error || !data) return 0;
+      return data.filter(v => (v.stock_quantity || 0) <= (v.min_stock_level ?? 5)).length;
+    } catch {
+      return 0;
+    }
   },
 
   // --- Reports & Analytics (Parallelized & Cached) ---
@@ -684,8 +754,9 @@ export const dbService = {
   // --- Users & Staff Management ---
   async getUsers(forceRefresh = false) {
     const now = Date.now();
-    if (!forceRefresh && cache.users && (now - cache.users.timestamp < CACHE_TTL_MS)) {
-      return cache.users.data;
+    const cached = getCached<any[]>('users');
+    if (!forceRefresh && cached && (now - cached.timestamp < CACHE_TTL_MS)) {
+      return cached.data;
     }
 
     // Read any locally-cached staff extensions & custom staff accounts
@@ -776,7 +847,7 @@ export const dbService = {
       mergedList.unshift(masterAccount);
     }
 
-    cache.users = { data: mergedList, timestamp: now };
+    setCached('users', mergedList);
     return mergedList;
   },
 
@@ -915,7 +986,7 @@ export const dbService = {
 
   async getUserProfile(userId: string): Promise<{ role: string; permissions: string[]; is_locked: boolean; phone?: string; full_name?: string } | null> {
     try {
-      const users = await this.getUsers(true);
+      const users = await this.getUsers(false);
       const matched = users.find(u => u.id === userId || u.email === userId || u.phone === userId);
       if (matched) {
         return {
@@ -939,15 +1010,16 @@ export const dbService = {
 
   async getSaleItemsDetailed(forceRefresh = false) {
     const now = Date.now();
-    if (!forceRefresh && cache.sale_items_detailed && (now - cache.sale_items_detailed.timestamp < CACHE_TTL_MS)) {
-      return cache.sale_items_detailed.data;
+    const cached = getCached<any[]>('sale_items_detailed');
+    if (!forceRefresh && cached && (now - cached.timestamp < CACHE_TTL_MS)) {
+      return cached.data;
     }
     const { data, error } = await supabase
       .from('sale_items')
-      .select('*, sale:sales(*)');
+      .select('id, sale_id, variant_id, quantity, unit_price, total_price, sale_type, return_date, is_returned, sale:sales(id, sale_date, invoice_code)');
     if (error) throw error;
     const result = data || [];
-    cache.sale_items_detailed = { data: result, timestamp: now };
+    setCached('sale_items_detailed', result);
     return result;
   },
 
@@ -986,8 +1058,9 @@ export const dbService = {
 
   async getStockLedger(forceRefresh = false) {
     const now = Date.now();
-    if (!forceRefresh && cache.stock_ledger && (now - cache.stock_ledger.timestamp < CACHE_TTL_MS)) {
-      return cache.stock_ledger.data;
+    const cached = getCached<any[]>('stock_ledger');
+    if (!forceRefresh && cached && (now - cached.timestamp < CACHE_TTL_MS)) {
+      return cached.data;
     }
     const { data, error } = await supabase
       .from('stock_ledger')
@@ -995,15 +1068,16 @@ export const dbService = {
       .order('created_at', { ascending: false });
     if (error) throw error;
     const result = data || [];
-    cache.stock_ledger = { data: result, timestamp: now };
+    setCached('stock_ledger', result);
     return result;
   },
 
   // --- Expenses ---
   async getExpenses(forceRefresh = false) {
     const now = Date.now();
-    if (!forceRefresh && cache.expenses && (now - cache.expenses.timestamp < CACHE_TTL_MS)) {
-      return cache.expenses.data;
+    const cached = getCached<any[]>('expenses');
+    if (!forceRefresh && cached && (now - cached.timestamp < CACHE_TTL_MS)) {
+      return cached.data;
     }
 
     let localExpenses: any[] = [];
@@ -1036,7 +1110,7 @@ export const dbService = {
 
     merged.sort((a, b) => new Date(b.expense_date || b.created_at).getTime() - new Date(a.expense_date || a.created_at).getTime());
 
-    cache.expenses = { data: merged, timestamp: now };
+    setCached('expenses', merged);
     return merged;
   },
 

@@ -169,7 +169,7 @@ export const ReportsView: React.FC<ReportsViewProps> = ({ userRole }) => {
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
 
-  const loadData = async (force = true) => {
+  const loadData = async (force = false) => {
     try {
       setLoading(true);
       const [salesList, itemsList, variantList, expenseList] = await Promise.all([
@@ -191,8 +191,8 @@ export const ReportsView: React.FC<ReportsViewProps> = ({ userRole }) => {
   };
 
   useEffect(() => {
-    loadData(true);
-  }, [reportType]);
+    loadData(false);
+  }, []);
 
   // Filter helper
   const filterByDate = (dateStr: string) => {

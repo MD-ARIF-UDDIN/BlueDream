@@ -31,6 +31,9 @@ CREATE TABLE IF NOT EXISTS public.products (
     created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
 );
 
+CREATE INDEX IF NOT EXISTS idx_products_category ON public.products(category);
+CREATE INDEX IF NOT EXISTS idx_products_name ON public.products(name);
+
 -- 3. Create Product Variants Table
 CREATE TABLE IF NOT EXISTS public.product_variants (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -47,7 +50,9 @@ CREATE TABLE IF NOT EXISTS public.product_variants (
 );
 
 CREATE INDEX IF NOT EXISTS idx_variants_barcode ON public.product_variants(barcode);
+CREATE INDEX IF NOT EXISTS idx_variants_sku ON public.product_variants(sku);
 CREATE INDEX IF NOT EXISTS idx_variants_product ON public.product_variants(product_id);
+CREATE INDEX IF NOT EXISTS idx_variants_stock_min ON public.product_variants(stock_quantity, min_stock_level);
 
 -- 4. Create Suppliers Table
 CREATE TABLE IF NOT EXISTS public.suppliers (
@@ -109,7 +114,9 @@ ALTER TABLE public.sales ADD COLUMN IF NOT EXISTS invoice_code VARCHAR(50);
 ALTER TABLE public.sales ADD COLUMN IF NOT EXISTS due_amount DECIMAL(10,2) NOT NULL DEFAULT 0.00;
 
 CREATE INDEX IF NOT EXISTS idx_sales_invoice_code ON public.sales(invoice_code);
-CREATE INDEX IF NOT EXISTS idx_sales_sale_date ON public.sales(sale_date);
+CREATE INDEX IF NOT EXISTS idx_sales_sale_date ON public.sales(sale_date DESC);
+CREATE INDEX IF NOT EXISTS idx_sales_customer_phone ON public.sales(customer_phone);
+CREATE INDEX IF NOT EXISTS idx_sales_created ON public.sales(created_at DESC);
 
 -- 8. Create Sale Items Table
 CREATE TABLE IF NOT EXISTS public.sale_items (
@@ -141,6 +148,7 @@ CREATE TABLE IF NOT EXISTS public.stock_ledger (
 );
 
 CREATE INDEX IF NOT EXISTS idx_stock_ledger_variant ON public.stock_ledger(variant_id);
+CREATE INDEX IF NOT EXISTS idx_stock_ledger_created ON public.stock_ledger(created_at DESC);
 
 -- 10. Create Expenses Table
 CREATE TABLE IF NOT EXISTS public.expenses (
@@ -151,6 +159,8 @@ CREATE TABLE IF NOT EXISTS public.expenses (
     expense_date TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
 );
+
+CREATE INDEX IF NOT EXISTS idx_expenses_date ON public.expenses(expense_date DESC);
 
 -- Drop legacy payment_collections if present (all collections/dues are maintained directly in sales table)
 DROP TABLE IF EXISTS public.payment_collections CASCADE;

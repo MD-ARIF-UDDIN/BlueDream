@@ -33,7 +33,7 @@ export const AuthView: React.FC<AuthViewProps> = ({ onAuthSuccess }) => {
 
     try {
       // 1. Fetch current users list to check lock status and credentials
-      const users = await dbService.getUsers(true);
+      const users = await dbService.getUsers(false);
       const matchedUser = users.find(u => {
         const uPhone = cleanPhoneInput(u.phone || '');
         const uEmailPhone = u.email ? cleanPhoneInput(u.email.split('@')[0]) : '';

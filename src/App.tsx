@@ -1,21 +1,39 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, lazy, Suspense } from 'react';
 import { Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { Sidebar } from './components/Sidebar';
-import { POSView } from './components/POSView';
-import { ProductsView } from './components/ProductsView';
-import { StockView } from './components/StockView';
-import { ReportsView } from './components/ReportsView';
-import { InventoryReportView } from './components/InventoryReportView';
-import { UsersView } from './components/UsersView';
-import { SalesListView } from './components/SalesListView';
-import { ReturnsListView } from './components/ReturnsListView';
 import { AuthView } from './components/AuthView';
-import { ExpensesView } from './components/ExpensesView';
 import { dbService } from './dbService';
 import { supabase } from './supabaseClient';
 import { useNotificationStore } from './store';
 import { RefreshCw, LogOut, User, Menu, Loader2 } from 'lucide-react';
 import { isRestrictedStaffRole, formatRoleName, hasModuleAccess, DEFAULT_ROLE_PERMISSIONS } from './roleUtils';
+
+// Fast Code-Split Views
+const POSView = lazy(() => import('./components/POSView').then(m => ({ default: m.POSView })));
+const ProductsView = lazy(() => import('./components/ProductsView').then(m => ({ default: m.ProductsView })));
+const StockView = lazy(() => import('./components/StockView').then(m => ({ default: m.StockView })));
+const ReportsView = lazy(() => import('./components/ReportsView').then(m => ({ default: m.ReportsView })));
+const InventoryReportView = lazy(() => import('./components/InventoryReportView').then(m => ({ default: m.InventoryReportView })));
+const UsersView = lazy(() => import('./components/UsersView').then(m => ({ default: m.UsersView })));
+const SalesListView = lazy(() => import('./components/SalesListView').then(m => ({ default: m.SalesListView })));
+const ReturnsListView = lazy(() => import('./components/ReturnsListView').then(m => ({ default: m.ReturnsListView })));
+const ExpensesView = lazy(() => import('./components/ExpensesView').then(m => ({ default: m.ExpensesView })));
+
+const ViewLoadingFallback = () => (
+  <div style={{
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'center',
+    justifyContent: 'center',
+    minHeight: '360px',
+    gap: '12px',
+    color: 'var(--text-muted)',
+    fontSize: '13px'
+  }}>
+    <Loader2 size={24} style={{ animation: 'spinLoader 0.7s linear infinite', color: 'var(--color-primary)' }} />
+    <span style={{ fontWeight: 600 }}>Loading module...</span>
+  </div>
+);
 
 function App() {
   const { toasts, removeToast, modal, closeModal, showToast } = useNotificationStore();
@@ -164,6 +182,19 @@ function App() {
     return () => subscription.unsubscribe();
   }, []);
 
+  // Prefetch critical modules and warm cache in background idle time
+  useEffect(() => {
+    if (session?.user) {
+      const runIdle = (window as any).requestIdleCallback || ((cb: any) => setTimeout(cb, 150));
+      runIdle(() => {
+        import('./components/POSView');
+        import('./components/ProductsView');
+        import('./components/SalesListView');
+        dbService.getVariants(false).catch(() => {});
+      });
+    }
+  }, [session]);
+
   if (authLoading) {
     return (
       <div style={{
@@ -183,7 +214,7 @@ function App() {
           width: '36px',
           height: '36px',
           border: '3px solid #e2e8f0',
-          borderTopColor: '#1d4ed8',
+          borderTopColor: '#0b2545',
           borderRadius: '50%',
           animation: 'spinLoader 0.7s linear infinite'
         }} />
@@ -371,19 +402,21 @@ function App() {
         </header>
 
         <main className="page-container">
-          <Routes>
-            <Route path="/" element={<Navigate to={getDefaultPath()} replace />} />
-            <Route path="/pos" element={hasModuleAccess(userPermissions, userRole, 'pos') ? <POSView onRefreshStats={refreshStats} /> : <Navigate to={getDefaultPath()} replace />} />
-            <Route path="/returns" element={hasModuleAccess(userPermissions, userRole, 'returns') ? <ReturnsListView isRestricted={isRestricted} userRole={userRole} /> : <Navigate to={getDefaultPath()} replace />} />
-            <Route path="/sales" element={hasModuleAccess(userPermissions, userRole, 'sales') ? <SalesListView isRestricted={isRestricted} userRole={userRole} /> : <Navigate to={getDefaultPath()} replace />} />
-            <Route path="/products" element={hasModuleAccess(userPermissions, userRole, 'products') ? <ProductsView onRefreshStats={refreshStats} userRole={userRole} /> : <Navigate to={getDefaultPath()} replace />} />
-            <Route path="/stock" element={hasModuleAccess(userPermissions, userRole, 'stock') ? <StockView onRefreshStats={refreshStats} userRole={userRole} /> : <Navigate to={getDefaultPath()} replace />} />
-            <Route path="/expenses" element={hasModuleAccess(userPermissions, userRole, 'expenses') ? <ExpensesView onRefreshStats={refreshStats} userRole={userRole} /> : <Navigate to={getDefaultPath()} replace />} />
-            <Route path="/users" element={hasModuleAccess(userPermissions, userRole, 'users') ? <UsersView userRole={userRole} /> : <Navigate to={getDefaultPath()} replace />} />
-            <Route path="/reports" element={hasModuleAccess(userPermissions, userRole, 'reports') ? <ReportsView userRole={userRole} /> : <Navigate to={getDefaultPath()} replace />} />
-            <Route path="/reports/inventory" element={hasModuleAccess(userPermissions, userRole, 'reports') ? <InventoryReportView userRole={userRole} /> : <Navigate to={getDefaultPath()} replace />} />
-            <Route path="*" element={<Navigate to={getDefaultPath()} replace />} />
-          </Routes>
+          <Suspense fallback={<ViewLoadingFallback />}>
+            <Routes>
+              <Route path="/" element={<Navigate to={getDefaultPath()} replace />} />
+              <Route path="/pos" element={hasModuleAccess(userPermissions, userRole, 'pos') ? <POSView onRefreshStats={refreshStats} /> : <Navigate to={getDefaultPath()} replace />} />
+              <Route path="/returns" element={hasModuleAccess(userPermissions, userRole, 'returns') ? <ReturnsListView isRestricted={isRestricted} userRole={userRole} /> : <Navigate to={getDefaultPath()} replace />} />
+              <Route path="/sales" element={hasModuleAccess(userPermissions, userRole, 'sales') ? <SalesListView isRestricted={isRestricted} userRole={userRole} /> : <Navigate to={getDefaultPath()} replace />} />
+              <Route path="/products" element={hasModuleAccess(userPermissions, userRole, 'products') ? <ProductsView onRefreshStats={refreshStats} userRole={userRole} /> : <Navigate to={getDefaultPath()} replace />} />
+              <Route path="/stock" element={hasModuleAccess(userPermissions, userRole, 'stock') ? <StockView onRefreshStats={refreshStats} userRole={userRole} /> : <Navigate to={getDefaultPath()} replace />} />
+              <Route path="/expenses" element={hasModuleAccess(userPermissions, userRole, 'expenses') ? <ExpensesView onRefreshStats={refreshStats} userRole={userRole} /> : <Navigate to={getDefaultPath()} replace />} />
+              <Route path="/users" element={hasModuleAccess(userPermissions, userRole, 'users') ? <UsersView userRole={userRole} /> : <Navigate to={getDefaultPath()} replace />} />
+              <Route path="/reports" element={hasModuleAccess(userPermissions, userRole, 'reports') ? <ReportsView userRole={userRole} /> : <Navigate to={getDefaultPath()} replace />} />
+              <Route path="/reports/inventory" element={hasModuleAccess(userPermissions, userRole, 'reports') ? <InventoryReportView userRole={userRole} /> : <Navigate to={getDefaultPath()} replace />} />
+              <Route path="*" element={<Navigate to={getDefaultPath()} replace />} />
+            </Routes>
+          </Suspense>
         </main>
       </div>
 
