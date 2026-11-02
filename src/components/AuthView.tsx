@@ -98,8 +98,8 @@ export const AuthView: React.FC<AuthViewProps> = ({ onAuthSuccess }) => {
       }
 
       // 5. Try Supabase Auth via standard email translation (phone@bluedream.local or phone@zenpos.local)
-      const authEmail = rawInput.includes('@') 
-        ? rawInput.toLowerCase() 
+      const authEmail = rawInput.includes('@')
+        ? rawInput.toLowerCase()
         : `${cleanPhone || rawInput}@bluedream.local`;
 
       let authResult;
@@ -356,7 +356,7 @@ export const AuthView: React.FC<AuthViewProps> = ({ onAuthSuccess }) => {
 
       <div className="auth-card-container">
         <div className="auth-card">
-          
+
           {/* Brand Header */}
           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', textAlign: 'center', gap: '10px' }}>
             <div className="auth-logo-badge">
@@ -429,7 +429,7 @@ export const AuthView: React.FC<AuthViewProps> = ({ onAuthSuccess }) => {
 
           {/* Form */}
           <form onSubmit={handleAuth} style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
-            
+
             {/* Phone Number Field */}
             <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
               <label style={{ color: '#334155', fontWeight: 700, fontSize: '12px' }}>
