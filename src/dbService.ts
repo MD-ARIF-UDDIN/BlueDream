@@ -50,7 +50,7 @@ function setCached<T>(key: keyof CacheStore, data: T): void {
         if (k && k.startsWith(STORAGE_PREFIX)) sessionStorage.removeItem(k);
       }
       sessionStorage.setItem(`${STORAGE_PREFIX}${key}`, JSON.stringify(entry));
-    } catch {}
+    } catch { }
   }
 }
 
@@ -62,13 +62,13 @@ export const clearPosCache = (keys?: (keyof CacheStore)[]) => {
         const k = sessionStorage.key(i);
         if (k && k.startsWith(STORAGE_PREFIX)) sessionStorage.removeItem(k);
       }
-    } catch {}
+    } catch { }
   } else {
     keys.forEach((k) => {
       delete cache[k];
       try {
         sessionStorage.removeItem(`${STORAGE_PREFIX}${k}`);
-      } catch {}
+      } catch { }
     });
   }
 };
@@ -290,7 +290,7 @@ export const dbService = {
       const { error: itemsError } = await supabase
         .from('purchase_items')
         .insert(purchaseItems);
-      
+
       if (itemsError) throw itemsError;
     }
     clearPosCache(['purchases', 'variants', 'stock_ledger']);
@@ -520,7 +520,7 @@ export const dbService = {
           is_returned: isReturn ? true : false
         };
       });
-      
+
       const { error: itemsError } = await supabase
         .from('sale_items')
         .insert(saleItems);
@@ -549,7 +549,7 @@ export const dbService = {
           });
         }
       }
-      
+
       clearPosCache(['sales', 'variants', 'sale_items_detailed', 'stock_ledger']);
       return { id: sale.id, invoice_code: sale.invoice_code || invoiceCode };
     }
@@ -645,9 +645,9 @@ export const dbService = {
     const itemsToUpdate = items.filter(it => it.id && existingMap.has(it.id));
     for (const item of itemsToUpdate) {
       const existing = existingMap.get(item.id!)!;
-      const changed = 
-        existing.quantity !== item.quantity || 
-        existing.unit_price !== item.unit_price || 
+      const changed =
+        existing.quantity !== item.quantity ||
+        existing.unit_price !== item.unit_price ||
         existing.variant_id !== item.variant_id ||
         existing.sale_type !== (item.sale_type || 'SALE') ||
         existing.is_returned !== (item.is_returned || false);
@@ -712,29 +712,46 @@ export const dbService = {
 
   // --- Reports & Analytics (Parallelized & Cached) ---
   async getDashboardStats() {
-    const [variants, sales, { data: saleItems }] = await Promise.all([
+    const [variants, sales, saleItems] = await Promise.all([
       this.getVariants(),
       this.getSales(),
-      supabase.from('sale_items').select('quantity, unit_price, variant_id, sale_type')
+      this.getSaleItemsDetailed().catch(() => [])
     ]);
-    
+
     // Total Revenue (Payable, Paid, Due & Discount)
     const revenue = sales.reduce((acc: number, s: any) => acc + Number(s.payable_amount || 0), 0);
     const totalDiscount = sales.reduce((acc: number, s: any) => acc + Number(s.discount_amount || 0), 0);
     const totalPaid = sales.reduce((acc: number, s: any) => acc + Number(s.received_amount !== undefined && s.received_amount !== null ? s.received_amount : s.payable_amount || 0), 0);
     const totalDue = Math.max(0, revenue - totalPaid);
-    
-    // Total COGS
+
+    let totalActualCashRefunded = 0;
+    sales.forEach((s: any) => {
+      const payable = Number(s.payable_amount || 0);
+      if (payable < 0) {
+        totalActualCashRefunded += Math.abs(payable);
+      }
+    });
+
+    // Total COGS (Cost of Goods Sold, properly adjusting for returns & fallback cost names)
     let totalCogs = 0;
-    if (saleItems) {
+    if (saleItems && Array.isArray(saleItems)) {
       const variantMap = new Map(variants.map(v => [v.id, v]));
       saleItems.forEach((si: any) => {
-        const v = variantMap.get(si.variant_id);
-        const unitCost = Number(v?.purchase_price || 0);
-        totalCogs += (Number(si.quantity || 0) * unitCost);
+        const v = variantMap.get(si.variant_id) || si.variant;
+        const rawCost = v?.purchase_price ?? (v as any)?.cost_price ?? (v as any)?.buying_price ?? 0;
+        const unitCost = isNaN(Number(rawCost)) ? 0 : Number(rawCost);
+        const qty = Number(si.quantity || 0);
+        const isReturn = si.sale_type === 'RETURN' || Boolean(si.is_returned);
+
+        if (isReturn) {
+          totalCogs -= (qty * unitCost);
+        } else {
+          totalCogs += (qty * unitCost);
+        }
       });
     }
-    const profit = totalPaid - totalCogs;
+
+    const profit = (totalPaid - totalActualCashRefunded) - totalCogs;
 
     // Low Stock Alert Count
     const lowStockCount = variants.filter(v => v.stock_quantity <= (v.min_stock_level ?? 5)).length;
@@ -789,13 +806,13 @@ export const dbService = {
       const ext = localExtensions[u.id] || localAccounts[u.id] || {};
       const phone = u.phone || ext.phone || (u.email && u.email.endsWith('@zenpos.local') ? u.email.replace('@zenpos.local', '') : u.phone || '');
       const isLocked = u.is_locked !== undefined ? Boolean(u.is_locked) : (ext.is_locked !== undefined ? Boolean(ext.is_locked) : false);
-      
+
       let perms = u.permissions || ext.permissions;
       if (typeof perms === 'string') {
         try { perms = JSON.parse(perms); } catch { perms = perms.split(',').map((s: string) => s.trim()); }
       }
       if (!Array.isArray(perms) || perms.length === 0) {
-        perms = u.role === 'admin' 
+        perms = u.role === 'admin'
           ? ['pos', 'returns', 'products', 'stock', 'sales', 'expenses', 'users', 'reports']
           : ['pos', 'returns', 'sales'];
       }
