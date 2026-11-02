@@ -346,7 +346,7 @@ export const dbService = {
     }
     let query = supabase
       .from('sales')
-      .select('id, invoice_code, sale_date, total_amount, discount_amount, payable_amount, received_amount, due_amount, change_amount, payment_method, customer_name, customer_phone, guarantor_name, guarantor_phone, notes, sale_items(id, variant_id, quantity, unit_price, total_price, sale_type, return_date, is_returned, variant:product_variants(id, barcode, sku, size, color, product:products(name)))')
+      .select('*, sale_items(id, variant_id, quantity, unit_price, total_price, sale_type, return_date, is_returned, variant:product_variants(id, barcode, sku, size, color, product:products(name)))')
       .order('sale_date', { ascending: false });
 
     if (limit) {

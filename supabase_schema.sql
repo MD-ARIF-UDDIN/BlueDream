@@ -112,6 +112,7 @@ CREATE TABLE IF NOT EXISTS public.sales (
 -- Backfill columns if table already existed
 ALTER TABLE public.sales ADD COLUMN IF NOT EXISTS invoice_code VARCHAR(50);
 ALTER TABLE public.sales ADD COLUMN IF NOT EXISTS due_amount DECIMAL(10,2) NOT NULL DEFAULT 0.00;
+ALTER TABLE public.sales ADD COLUMN IF NOT EXISTS notes TEXT;
 
 CREATE INDEX IF NOT EXISTS idx_sales_invoice_code ON public.sales(invoice_code);
 CREATE INDEX IF NOT EXISTS idx_sales_sale_date ON public.sales(sale_date DESC);
