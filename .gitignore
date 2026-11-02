@@ -1,0 +1,105 @@
+# ==========================================
+# Environment Variables & Secrets (CRITICAL)
+# ==========================================
+.env
+.env.*
+!.env.example
+*.local
+
+# Credentials, Keys & Certificates
+*.pem
+*.key
+*.cert
+*.crt
+*.pfx
+*.p12
+*.keystore
+id_rsa*
+secrets.*
+credentials.*
+serviceAccountKey*.json
+*-service-account.json
+
+# ==========================================
+# Dependencies & Package Managers
+# ==========================================
+node_modules/
+.pnpm-store/
+.npm
+.yarn/*
+!.yarn/patches
+!.yarn/plugins
+!.yarn/releases
+!.yarn/sdks
+!.yarn/versions
+
+# ==========================================
+# Build & Output Directories
+# ==========================================
+dist/
+dist-ssr/
+build/
+out/
+.output/
+
+# ==========================================
+# Cache & Temporary Files
+# ==========================================
+.vite/
+.cache/
+.turbo/
+.eslintcache
+.stylelintcache
+*.tsbuildinfo
+*.tmp
+*.temp
+*~
+*.swp
+*.swo
+
+# ==========================================
+# Logs
+# ==========================================
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+# ==========================================
+# Operating System Files
+# ==========================================
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+Thumbs.db:encryptable
+desktop.ini
+
+# ==========================================
+# IDE & Code Editor Configs
+# ==========================================
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sublime-project
+*.sublime-workspace
+
+# ==========================================
+# Database Local Dumps & Backups
+# ==========================================
+*.sql.bak
+*.dump
+*.backup
+*.sqlite
+*.sqlite3
