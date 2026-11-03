@@ -45,7 +45,7 @@ CREATE TABLE IF NOT EXISTS public.product_variants (
     purchase_price DECIMAL(10,2) NOT NULL DEFAULT 0.00,
     selling_price DECIMAL(10,2) NOT NULL DEFAULT 0.00,
     stock_quantity INTEGER NOT NULL DEFAULT 0,
-    min_stock_level INTEGER NOT NULL DEFAULT 5,
+    min_stock_level INTEGER NOT NULL DEFAULT 2,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
 );
 
@@ -53,6 +53,7 @@ CREATE INDEX IF NOT EXISTS idx_variants_barcode ON public.product_variants(barco
 CREATE INDEX IF NOT EXISTS idx_variants_sku ON public.product_variants(sku);
 CREATE INDEX IF NOT EXISTS idx_variants_product ON public.product_variants(product_id);
 CREATE INDEX IF NOT EXISTS idx_variants_stock_min ON public.product_variants(stock_quantity, min_stock_level);
+ALTER TABLE public.product_variants ALTER COLUMN min_stock_level SET DEFAULT 2;
 
 -- 4. Create Suppliers Table
 CREATE TABLE IF NOT EXISTS public.suppliers (

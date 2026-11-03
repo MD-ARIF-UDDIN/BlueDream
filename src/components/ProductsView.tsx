@@ -139,7 +139,7 @@ export const ProductsView: React.FC<ProductsViewProps> = ({ onRefreshStats, user
   const [formPurchasePrice, setFormPurchasePrice] = useState<number | string>(0);
   const [formSellingPrice, setFormSellingPrice] = useState<number | string>(0);
   const [formStockQuantity, setFormStockQuantity] = useState<number | string>(0);
-  const [formMinStock, setFormMinStock] = useState<number | string>(5);
+  const [formMinStock, setFormMinStock] = useState<number | string>(2);
   const [formDescription, setFormDescription] = useState('');
   const [savingProduct, setSavingProduct] = useState(false);
 
@@ -228,7 +228,7 @@ export const ProductsView: React.FC<ProductsViewProps> = ({ onRefreshStats, user
     setFormPurchasePrice(0);
     setFormSellingPrice(0);
     setFormStockQuantity(0);
-    setFormMinStock(5);
+    setFormMinStock(2);
     setFormDescription('');
     setShowProductModal(true);
   };
@@ -253,7 +253,7 @@ export const ProductsView: React.FC<ProductsViewProps> = ({ onRefreshStats, user
     setFormPurchasePrice(v.purchase_price || 0);
     setFormSellingPrice(v.selling_price || 0);
     setFormStockQuantity(v.stock_quantity || 0);
-    setFormMinStock(v.min_stock_level || 5);
+    setFormMinStock(v.min_stock_level || 2);
     setFormDescription(v.product?.description || '');
     setShowProductModal(true);
   };
@@ -302,7 +302,7 @@ export const ProductsView: React.FC<ProductsViewProps> = ({ onRefreshStats, user
         purchase_price: Math.max(0, Number(formPurchasePrice) || 0),
         selling_price: Math.max(0, Number(formSellingPrice) || 0),
         stock_quantity: Math.max(0, Number(formStockQuantity) || 0),
-        min_stock_level: Math.max(0, Number(formMinStock) || 5),
+        min_stock_level: Math.max(0, Number(formMinStock) || 2),
       });
 
       setShowProductModal(false);
@@ -425,7 +425,7 @@ export const ProductsView: React.FC<ProductsViewProps> = ({ onRefreshStats, user
       v.purchase_price || 0,
       v.selling_price || 0,
       v.stock_quantity || 0,
-      v.min_stock_level || 5
+      v.min_stock_level || 2
     ]);
 
     const csvContent = 'data:text/csv;charset=utf-8,\uFEFF' + [headers.join(','), ...rows.map(e => e.join(','))].join('\n');

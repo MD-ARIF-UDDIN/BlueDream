@@ -103,3 +103,7 @@ desktop.ini
 *.backup
 *.sqlite
 *.sqlite3
+
+# Local Seed Scripts & Data
+seed_products.*
+test_*.mjs

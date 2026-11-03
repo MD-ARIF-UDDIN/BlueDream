@@ -693,18 +693,18 @@ export const dbService = {
   // --- Ultra-Fast Low Stock Count for Badge (Does not pull all sales/items) ---
   async getLowStockCount(): Promise<number> {
     if (cache.variants?.data) {
-      return cache.variants.data.filter(v => v.stock_quantity <= (v.min_stock_level ?? 5)).length;
+      return cache.variants.data.filter(v => v.stock_quantity <= (v.min_stock_level ?? 2)).length;
     }
     const cached = getCached<ProductVariant[]>('variants');
     if (cached?.data) {
-      return cached.data.filter(v => v.stock_quantity <= (v.min_stock_level ?? 5)).length;
+      return cached.data.filter(v => v.stock_quantity <= (v.min_stock_level ?? 2)).length;
     }
     try {
       const { data, error } = await supabase
         .from('product_variants')
         .select('stock_quantity, min_stock_level');
       if (error || !data) return 0;
-      return data.filter(v => (v.stock_quantity || 0) <= (v.min_stock_level ?? 5)).length;
+      return data.filter(v => (v.stock_quantity || 0) <= (v.min_stock_level ?? 2)).length;
     } catch {
       return 0;
     }
@@ -754,7 +754,7 @@ export const dbService = {
     const profit = (totalPaid - totalActualCashRefunded) - totalCogs;
 
     // Low Stock Alert Count
-    const lowStockCount = variants.filter(v => v.stock_quantity <= (v.min_stock_level ?? 5)).length;
+    const lowStockCount = variants.filter(v => v.stock_quantity <= (v.min_stock_level ?? 2)).length;
 
     return {
       totalRevenue: revenue,
